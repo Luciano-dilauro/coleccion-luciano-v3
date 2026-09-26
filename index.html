@@ -52,7 +52,7 @@
                         <span class="manage-title">Crear colección</span>
                         <span class="manage-sub">Agregar un nuevo álbum</span>
                     </button>
-                    <button class="manage-btn" data-view="edit">
+                    <button class="manage-btn" data-view="edit-picker">
                         <span class="manage-icon">⚙️</span>
                         <span class="manage-title">Editar colección</span>
                         <span class="manage-sub">Modificar un álbum existente</span>
@@ -61,7 +61,16 @@
                 <button class="btn-soft-red" data-view="delete">🗑️ Eliminar colección</button>
             </section>
 
-            <!-- ELIMINAR COLECCIÓN (sin botón volver extra) -->
+            <!-- EDITAR: SELECCIÓN DE COLECCIÓN -->
+            <section id="view-edit-picker" class="view">
+                <div class="delete-header">
+                    <h2>Editar colección</h2>
+                </div>
+                <p class="delete-sub">Tocá una colección para editarla</p>
+                <div id="editShelf" class="shelf-3"></div>
+            </section>
+
+            <!-- ELIMINAR: SELECCIÓN DE COLECCIÓN -->
             <section id="view-delete" class="view">
                 <div class="delete-header">
                     <h2>Eliminar colección</h2>
@@ -108,7 +117,45 @@
                 </div>
             </section>
 
-            <!-- MODAL SECCIÓN ESPECIAL -->
+            <!-- EDITAR COLECCIÓN (mismo formulario que crear) -->
+            <section id="view-edit" class="view">
+                <div class="field">
+                    <label>Nombre</label>
+                    <input type="text" id="editName" placeholder="Ej: Mundial 2026" />
+                </div>
+                <div class="field">
+                    <label>Portada (opcional)</label>
+                    <div class="cover-row">
+                        <button id="editCoverPickBtn" class="btn-secondary">📷 Subir imagen</button>
+                        <button id="editCoverClearBtn" class="btn-secondary" style="display:none">❌ Quitar</button>
+                        <input type="file" id="editCoverInput" accept="image/*" style="display:none" />
+                        <div id="editCoverPreview" class="cover-preview">📘</div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Numeración</label>
+                    <div class="row-2">
+                        <div><label>Desde</label> <input type="number" id="editNumFrom" value="1" /></div>
+                        <div><label>Hasta</label> <input type="number" id="editNumTo" value="100" /></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>⭐ Brillantes (opcional)</label>
+                    <input type="text" id="editShinyInput" placeholder="Ej: 7, 12, 45" />
+                    <span class="hint">Números separados por comas</span>
+                </div>
+                <div class="field">
+                    <label>Secciones especiales</label>
+                    <div id="editSpecialList"></div>
+                    <button id="editAddSpecialBtn" class="btn-secondary">➕ Agregar sección</button>
+                </div>
+                <div class="row-2" style="margin-top:12px;">
+                    <button id="editSaveBtn" class="btn-white">💾 Guardar cambios</button>
+                    <button id="editCancelBtn" class="btn-soft-red">Cancelar</button>
+                </div>
+            </section>
+
+            <!-- MODAL SECCIÓN ESPECIAL (crear) -->
             <div id="specialModal" class="modal hidden">
                 <div class="modal-box">
                     <h3>Agregar sección especial</h3>
@@ -122,6 +169,24 @@
                     <div class="row-2" style="margin-top:16px;">
                         <button id="specialCancelBtn" class="btn-soft-red">Cancelar</button>
                         <button id="specialAddBtn" class="btn-white">Añadir</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL SECCIÓN ESPECIAL (editar) -->
+            <div id="editSpecialModal" class="modal hidden">
+                <div class="modal-box">
+                    <h3>Agregar sección especial</h3>
+                    <div class="field"><label>Nombre</label> <input type="text" id="editSpecialName" placeholder="Ej: Equipo A" /></div>
+                    <div class="field"><label>Prefijo</label> <input type="text" id="editSpecialPrefix" placeholder="Ej: RIA" /></div>
+                    <div class="row-2" style="gap: 16px;">
+                        <div class="field"><label>Desde</label> <input type="number" id="editSpecialFrom" value="1" style="padding: 12px;" /></div>
+                        <div class="field"><label>Hasta</label> <input type="number" id="editSpecialTo" value="20" style="padding: 12px;" /></div>
+                    </div>
+                    <div class="field"><label>⭐ Brillantes</label> <input type="text" id="editSpecialShiny" placeholder="Ej: 3, 8, 15" /></div>
+                    <div class="row-2" style="margin-top:16px;">
+                        <button id="editSpecialCancelBtn" class="btn-soft-red">Cancelar</button>
+                        <button id="editSpecialAddBtn" class="btn-white">Añadir</button>
                     </div>
                 </div>
             </div>
