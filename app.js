@@ -336,12 +336,13 @@ function aplicarCambios(col, name) {
 
     for (const sec of editSpecialSections) {
         const sectionId = sec.id || uid('sec');
+        const prefix = sec.prefix || '';
         const section = {
             id: sectionId,
             name: sec.name,
-            prefix: sec.prefix || '',
-            ownNumbering: !!sec.prefix,
-            format: sec.prefix ? 'alfa' : 'num',
+            prefix: prefix,
+            ownNumbering: !!prefix,
+            format: prefix ? 'alfa' : 'num',
             specials: []
         };
         newSections.push(section);
@@ -349,7 +350,7 @@ function aplicarCambios(col, name) {
         const shinySet = new Set(sec.shinyNumbers || []);
         for (let i = sec.from; i <= sec.to; i++) {
             const old = oldBySecNum.get(`${sectionId}|${i}`);
-            const label = sec.prefix ? `${sec.prefix}${i}` : String(i);
+            const label = prefix ? `${prefix}${i}` : String(i);
             newItems.push({
                 id: old?.id || uid('it'),
                 sectionId,
@@ -357,7 +358,7 @@ function aplicarCambios(col, name) {
                 label,
                 have: old?.have || false,
                 rep: old?.rep || 0,
-                special: !!sec.prefix,
+                special: !!prefix,
                 section: sec.name,
                 shiny: shinySet.has(i)
             });
@@ -672,12 +673,13 @@ function createCollection() {
     }
 
     for (const sec of specialSections) {
+        const prefix = sec.prefix || '';
         const section = {
             id: uid('sec'),
             name: sec.name,
-            prefix: sec.prefix,
-            ownNumbering: true,
-            format: 'alfa',
+            prefix: prefix,
+            ownNumbering: !!prefix,
+            format: prefix ? 'alfa' : 'num',
             specials: []
         };
         col.sections.push(section);
@@ -688,10 +690,10 @@ function createCollection() {
                 id: uid('it'),
                 sectionId: section.id,
                 num: i,
-                label: `${sec.prefix}${i}`,
+                label: prefix ? `${prefix}${i}` : String(i),
                 have: false,
                 rep: 0,
-                special: true,
+                special: !!prefix,
                 section: sec.name,
                 shiny: shinySetSpecial.has(i)
             });
@@ -754,7 +756,6 @@ function addSpecialSection() {
     const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
 
     if (!name) { alert('El nombre es obligatorio.'); return; }
-    if (!prefix) { alert('El prefijo es obligatorio.'); return; }
     if (isNaN(from) || isNaN(to) || from > to) {
         alert('Rango inválido. Asegúrate de que "Desde" sea menor o igual que "Hasta".');
         return;
