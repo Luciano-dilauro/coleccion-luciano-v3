@@ -205,7 +205,6 @@ function openEdit(id) {
 
     document.getElementById('editName').value = col.name || '';
 
-    // Cargar TODAS las secciones (base incluida) en la lista
     editSpecialSections = col.sections.map(sec => {
         const items = col.items.filter(it => it.sectionId === sec.id);
         const nums = items.map(it => it.num).filter(n => typeof n === 'number' && !isNaN(n));
@@ -306,7 +305,6 @@ function saveEdit() {
         }
     }
 
-    // Si no hay ninguna sección, avisamos
     if (editSpecialSections.length === 0) {
         document.getElementById('confirmMsg').textContent =
             'No hay ninguna sección. Se guardará la colección vacía. ¿Continuar?';
@@ -322,7 +320,6 @@ function saveEdit() {
 }
 
 function aplicarCambios(col, name) {
-    // Mapa de figuritas viejas por sectionId + num (para conservar marcas)
     const oldBySecNum = new Map();
     for (const it of col.items) {
         const num = (typeof it.num === 'number') ? it.num : parseInt(it.label.replace(/^[^\d]*/, ''), 10);
@@ -378,7 +375,6 @@ function aplicarCambios(col, name) {
     renderEditShelf();
 }
 
-// Modal editar sección
 function openEditSpecialModal(idx) {
     editingEditSpecialIdx = (typeof idx === 'number') ? idx : null;
     const modal = document.getElementById('editSpecialModal');
@@ -470,7 +466,6 @@ function renderDetail() {
     const grid = document.getElementById('detailGrid');
     grid.innerHTML = '';
 
-    // Agrupar por sección respetando el orden de col.sections
     for (const section of col.sections) {
         let filteredItems = col.items.filter(it => it.sectionId === section.id);
         if (filter === 'miss') filteredItems = filteredItems.filter(it => !it.have);
@@ -593,7 +588,7 @@ document.querySelectorAll('.tab').forEach(el => {
 });
 
 // ============================================================
-//  CREAR COLECCIÓN (comportamiento original)
+//  CREAR COLECCIÓN
 // ============================================================
 
 function renderSpecialSections() {
@@ -652,7 +647,6 @@ function createCollection() {
         sections: []
     };
 
-    // Sección base (numerada)
     const baseSection = {
         id: uid('sec'),
         name: 'General',
@@ -677,7 +671,6 @@ function createCollection() {
         });
     }
 
-    // Secciones especiales
     for (const sec of specialSections) {
         const section = {
             id: uid('sec'),
@@ -814,41 +807,33 @@ function importBackup(file) {
     reader.readAsText(file);
 }
 
+// ============================================================
+//  EXPORTAR LISTAS (faltantes / repetidas)
+// ============================================================
+
 function buildExportText(mode) {
     const col = getCurrent();
     if (!col) return '';
 
-    const items = col.items;
-    const sectionsMap = new Map();
-
-    for (const it of items) {
-        const sectionId = it.sectionId || 'default';
-        if (!sectionsMap.has(sectionId)) {
-            const section = col.sections.find(s => s.id === sectionId);
-            sectionsMap.set(sectionId, {
-                name: section ? section.name : 'General',
-                items: []
-            });
-        }
-        sectionsMap.get(sectionId).items.push(it);
-    }
-
     let lines = [];
     let totalCount = 0;
 
-    for (const [sectionId, sectionData] of sectionsMap) {
-        let filteredItems = [];
+    for (const section of col.sections) {
+        let filteredItems = col.items.filter(it => it.sectionId === section.id);
         if (mode === 'missing') {
-            filteredItems = sectionData.items.filter(it => !it.have);
+            filteredItems = filteredItems.filter(it => !it.have);
         } else {
-            filteredItems = sectionData.items.filter(it => it.rep > 0);
+            filteredItems = filteredItems.filter(it => it.rep > 0);
         }
 
         if (filteredItems.length === 0) continue;
 
         totalCount += filteredItems.length;
-        const labels = filteredItems.map(it => it.label).join(', ');
-        lines.push(`*${sectionData.name}*\n${labels}`);
+        const labels = filteredItems.map(it => {
+            if (typeof it.num === 'number') return it.num;
+            return parseInt(it.label.replace(/^[^\d]*/, ''), 10);
+        }).join(', ');
+        lines.push(`*${section.name}*\n${labels}`);
     }
 
     if (lines.length === 0) {
