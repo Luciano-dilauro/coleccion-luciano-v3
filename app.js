@@ -1,9 +1,12 @@
 let data = { collections: [] };
 let currentId = null;
+let editId = null;
 let filter = 'all';
 let confirmCallback = null;
 let specialSections = [];
+let editSpecialSections = [];
 let coverDataUrl = null;
+let editCoverDataUrl = null;
 
 const LS_KEY = 'coleccion_v2';
 const LAST_KEY = 'ultima_coleccion';
@@ -17,6 +20,9 @@ function save() {
 }
 function getCurrent() {
     return data.collections.find(c => c.id === currentId) || null;
+}
+function getEdit() {
+    return data.collections.find(c => c.id === editId) || null;
 }
 function uid() { return Date.now() + '-' + Math.random().toString(36).slice(2,6); }
 
@@ -43,6 +49,8 @@ function showView(name) {
             main: 'Principal',
             collections: 'Mis colecciones',
             manage: 'Gestión',
+            'edit-picker': 'Editar colección',
+            edit: 'Editar colección',
             delete: 'Eliminar colección',
             create: 'Crear colección',
             backup: 'Backup',
@@ -60,10 +68,12 @@ function showView(name) {
     if (name === 'main') updateStats();
     if (name === 'collections') renderShelf();
     if (name === 'delete') renderDeleteShelf();
+    if (name === 'edit-picker') renderEditShelf();
 }
 
 function goMain() {
     currentId = null;
+    editId = null;
     localStorage.removeItem(LAST_KEY);
     showView('main');
 }
@@ -134,6 +144,32 @@ function renderDeleteShelf() {
     }
 }
 
+function renderEditShelf() {
+    const shelf = document.getElementById('editShelf');
+    shelf.innerHTML = '';
+    if (data.collections.length === 0) {
+        shelf.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px 0;">No hay colecciones para editar</p>';
+        return;
+    }
+    for (const c of data.collections) {
+        const have = c.items.filter(it => it.have).length;
+        const pct = c.items.length ? Math.round(have / c.items.length * 100) : 0;
+        const div = document.createElement('div');
+        div.className = 'shelf-card';
+        let coverHtml = '📘';
+        if (c.cover) coverHtml = `<img src="${c.cover}" alt="Tapa" />`;
+        div.innerHTML = `
+            <div class="cover">${coverHtml}</div>
+            <div class="info">
+                <div class="name">${c.name}</div>
+                <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+            </div>
+        `;
+        div.addEventListener('click', () => openEdit(c.id));
+        shelf.appendChild(div);
+    }
+}
+
 function confirmDeleteCollection(id) {
     const col = data.collections.find(c => c.id === id);
     if (!col) return;
@@ -150,12 +186,212 @@ function confirmDeleteCollection(id) {
         renderShelf();
         renderDeleteShelf();
         document.getElementById('confirmModal').classList.add('hidden');
-        // Si la vista de eliminar está activa, recargar
         if (document.getElementById('view-delete').classList.contains('active')) {
             renderDeleteShelf();
         }
     };
 }
+
+// ============================================================
+//  EDITAR COLECCIÓN
+// ============================================================
+
+function openEdit(id) {
+    editId = id;
+    const col = getEdit();
+    if (!col) return;
+
+    document.getElementById('editName').value = col.name || '';
+
+    const generalSection = col.sections[0];
+    const generalItems = col.items.filter(it => it.sectionId === generalSection?.id);
+    const nums = generalItems.map(it => parseInt(it.label, 10)).filter(n => !isNaN(n));
+    document.getElementById('editNumFrom').value = nums.length ? Math.min(...nums) : 1;
+    document.getElementById('editNumTo').value = nums.length ? Math.max(...nums) : 100;
+
+    const shinyItems = generalItems.filter(it => it.shiny);
+    document.getElementById('editShinyInput').value = shinyItems.map(it => it.label).join(', ');
+
+    editCoverDataUrl = col.cover || null;
+    paintEditCover();
+
+    editSpecialSections = col.sections.slice(1).map(sec => {
+        const items = col.items.filter(it => it.sectionId === sec.id);
+        const shinyItems = items.filter(it => it.shiny);
+        const nums = items.map(it => parseInt(it.label.replace(sec.prefix, ''), 10)).filter(n => !isNaN(n));
+        return {
+            id: sec.id,
+            name: sec.name,
+            prefix: sec.prefix,
+            from: nums.length ? Math.min(...nums) : 1,
+            to: nums.length ? Math.max(...nums) : 20,
+            shinyNumbers: shinyItems.map(it => parseInt(it.label.replace(sec.prefix, ''), 10)).filter(n => !isNaN(n))
+        };
+    });
+    renderEditSpecialSections();
+
+    showView('edit');
+}
+
+function paintEditCover() {
+    const img = document.getElementById('editCoverPreview');
+    if (!img) return;
+    if (editCoverDataUrl) {
+        img.innerHTML = `<img src="${editCoverDataUrl}" alt="Tapa" />`;
+        document.getElementById('editCoverClearBtn').style.display = 'inline-block';
+    } else {
+        img.innerHTML = '📘';
+        document.getElementById('editCoverClearBtn').style.display = 'none';
+    }
+}
+
+function renderEditSpecialSections() {
+    const container = document.getElementById('editSpecialList');
+    container.innerHTML = '';
+    for (const sec of editSpecialSections) {
+        const div = document.createElement('div');
+        div.className = 'special-item';
+        div.innerHTML = `
+            <span><strong>${sec.name}</strong> (${sec.prefix}) → ${sec.from} a ${sec.to}</span>
+            <button class="remove" data-idx="${editSpecialSections.indexOf(sec)}">✕</button>
+        `;
+        container.appendChild(div);
+    }
+    container.querySelectorAll('.remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+            editSpecialSections.splice(idx, 1);
+            renderEditSpecialSections();
+        });
+    });
+}
+
+function saveEdit() {
+    const col = getEdit();
+    if (!col) return;
+
+    const name = document.getElementById('editName').value.trim();
+    const from = parseInt(document.getElementById('editNumFrom').value, 10);
+    const to = parseInt(document.getElementById('editNumTo').value, 10);
+    const shinyRaw = document.getElementById('editShinyInput').value.trim();
+    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
+
+    if (!name) { alert('El nombre es obligatorio.'); return; }
+    if (isNaN(from) || isNaN(to) || from > to) {
+        alert('Rango inválido. Asegúrate de que "Desde" sea menor o igual que "Hasta".');
+        return;
+    }
+
+    // Guardar estado actual por key (así conservamos have/rep)
+    const oldItems = new Map();
+    for (const it of col.items) {
+        oldItems.set(it.key, it);
+    }
+
+    col.name = name;
+    col.cover = editCoverDataUrl || null;
+
+    const generalSection = col.sections[0] || {
+        id: uid('sec'), name: 'General', format: 'num', prefix: '', ownNumbering: false, specials: []
+    };
+    if (!col.sections[0]) col.sections = [generalSection];
+
+    const shinySet = new Set(shinyNumbers);
+    const newItems = [];
+
+    // Sección general
+    for (let i = from; i <= to; i++) {
+        const key = `num:${i}`;
+        const old = oldItems.get(key);
+        newItems.push({
+            id: old?.id || uid('it'),
+            sectionId: generalSection.id,
+            label: String(i),
+            have: old?.have || false,
+            rep: old?.rep || 0,
+            special: false,
+            shiny: shinySet.has(i),
+            key
+        });
+    }
+
+    // Secciones especiales (conservando id y estado)
+    const newSections = [generalSection];
+    for (const sec of editSpecialSections) {
+        const section = {
+            id: sec.id || uid('sec'),
+            name: sec.name,
+            format: 'alfa',
+            prefix: sec.prefix,
+            ownNumbering: true,
+            specials: []
+        };
+        newSections.push(section);
+
+        const shinySetSpecial = new Set(sec.shinyNumbers || []);
+        for (let i = sec.from; i <= sec.to; i++) {
+            const key = `alfa:${sec.prefix}:${i}`;
+            const old = oldItems.get(key);
+            newItems.push({
+                id: old?.id || uid('it'),
+                sectionId: section.id,
+                label: `${sec.prefix}${i}`,
+                have: old?.have || false,
+                rep: old?.rep || 0,
+                special: true,
+                section: sec.name,
+                shiny: shinySetSpecial.has(i),
+                key
+            });
+        }
+    }
+
+    col.sections = newSections;
+    col.items = newItems;
+
+    save();
+    updateStats();
+    renderShelf();
+    alert('Cambios guardados ✅');
+    showView('edit-picker');
+    renderEditShelf();
+}
+
+// Modal sección especial en edición
+function openEditSpecialModal() {
+    document.getElementById('editSpecialModal').classList.remove('hidden');
+    document.getElementById('editSpecialName').value = '';
+    document.getElementById('editSpecialPrefix').value = '';
+    document.getElementById('editSpecialFrom').value = 1;
+    document.getElementById('editSpecialTo').value = 20;
+    document.getElementById('editSpecialShiny').value = '';
+}
+function closeEditSpecialModal() {
+    document.getElementById('editSpecialModal').classList.add('hidden');
+}
+function addEditSpecialSection() {
+    const name = document.getElementById('editSpecialName').value.trim();
+    const prefix = document.getElementById('editSpecialPrefix').value.trim().toUpperCase();
+    const from = parseInt(document.getElementById('editSpecialFrom').value, 10);
+    const to = parseInt(document.getElementById('editSpecialTo').value, 10);
+    const shinyRaw = document.getElementById('editSpecialShiny').value.trim();
+    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
+
+    if (!name) { alert('El nombre es obligatorio.'); return; }
+    if (!prefix) { alert('El prefijo es obligatorio.'); return; }
+    if (isNaN(from) || isNaN(to) || from > to) {
+        alert('Rango inválido.');
+        return;
+    }
+
+    editSpecialSections.push({ id: uid('sec'), name, prefix, from, to, shinyNumbers });
+    renderEditSpecialSections();
+    closeEditSpecialModal();
+}
+
+// ============================================================
+//  DETALLE
+// ============================================================
 
 function renderDetail() {
     const col = getCurrent();
@@ -249,9 +485,7 @@ function renderDetail() {
 
             const onTouchEnd = () => {
                 clearTimeout(longPressTimer);
-                if (!isSwiping && !longPressFired) {
-                    handleTap(it);
-                }
+                if (!isSwiping && !longPressFired) handleTap(it);
             };
 
             div.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -261,10 +495,7 @@ function renderDetail() {
             let mouseDown = false;
             div.addEventListener('mousedown', () => { mouseDown = true; });
             div.addEventListener('mouseup', () => {
-                if (mouseDown) {
-                    mouseDown = false;
-                    handleTap(it);
-                }
+                if (mouseDown) { mouseDown = false; handleTap(it); }
             });
             div.addEventListener('mouseleave', () => { mouseDown = false; });
 
@@ -320,6 +551,10 @@ document.querySelectorAll('.tab').forEach(el => {
     });
 });
 
+// ============================================================
+//  CREAR COLECCIÓN
+// ============================================================
+
 function renderSpecialSections() {
     const container = document.getElementById('specialList');
     container.innerHTML = '';
@@ -334,7 +569,7 @@ function renderSpecialSections() {
     }
     container.querySelectorAll('.remove').forEach(btn => {
         btn.addEventListener('click', () => {
-            const idx = parseInt(btn.getAttribute('data-idx'));
+            const idx = parseInt(btn.getAttribute('data-idx'), 10);
             specialSections.splice(idx, 1);
             renderSpecialSections();
         });
@@ -343,10 +578,10 @@ function renderSpecialSections() {
 
 function createCollection() {
     const name = document.getElementById('createName').value.trim();
-    const from = parseInt(document.getElementById('numFrom').value);
-    const to = parseInt(document.getElementById('numTo').value);
+    const from = parseInt(document.getElementById('numFrom').value, 10);
+    const to = parseInt(document.getElementById('numTo').value, 10);
     const shinyRaw = document.getElementById('shinyInput').value.trim();
-    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
 
     if (!name) { alert('El nombre es obligatorio.'); return; }
     if (isNaN(from) || isNaN(to) || from > to) {
@@ -444,10 +679,10 @@ function closeSpecialModal() {
 function addSpecialSection() {
     const name = document.getElementById('specialName').value.trim();
     const prefix = document.getElementById('specialPrefix').value.trim().toUpperCase();
-    const from = parseInt(document.getElementById('specialFrom').value);
-    const to = parseInt(document.getElementById('specialTo').value);
+    const from = parseInt(document.getElementById('specialFrom').value, 10);
+    const to = parseInt(document.getElementById('specialTo').value, 10);
     const shinyRaw = document.getElementById('specialShiny').value.trim();
-    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
 
     if (!name) { alert('El nombre es obligatorio.'); return; }
     if (!prefix) { alert('El prefijo es obligatorio.'); return; }
@@ -553,7 +788,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderDeleteShelf();
             } else if (v === 'backup') showView('backup');
             else if (v === 'create') showView('create');
-            else if (v === 'edit') alert('Función en desarrollo.');
+            else if (v === 'edit-picker') {
+                showView('edit-picker');
+                renderEditShelf();
+            }
         });
     });
 
@@ -565,6 +803,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 showView('collections');
             } else if (id === 'view-delete') {
                 showView('manage');
+            } else if (id === 'view-edit-picker') {
+                showView('manage');
+            } else if (id === 'view-edit') {
+                showView('edit-picker');
+                renderEditShelf();
             } else {
                 goMain();
             }
@@ -581,6 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('searchInput').addEventListener('input', renderShelf);
 
+    // Portada en crear
     document.getElementById('coverPickBtn').addEventListener('click', () => {
         document.getElementById('coverInput').click();
     });
@@ -602,6 +846,27 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('coverClearBtn').style.display = 'none';
     });
 
+    // Portada en editar
+    document.getElementById('editCoverPickBtn').addEventListener('click', () => {
+        document.getElementById('editCoverInput').click();
+    });
+    document.getElementById('editCoverInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            editCoverDataUrl = ev.target.result;
+            paintEditCover();
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    });
+    document.getElementById('editCoverClearBtn').addEventListener('click', () => {
+        editCoverDataUrl = null;
+        paintEditCover();
+    });
+
+    // Modal sección especial (crear)
     document.getElementById('addSpecialBtn').addEventListener('click', openSpecialModal);
     document.getElementById('specialCancelBtn').addEventListener('click', closeSpecialModal);
     document.getElementById('specialAddBtn').addEventListener('click', addSpecialSection);
@@ -609,7 +874,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closeSpecialModal();
     });
 
+    // Modal sección especial (editar)
+    document.getElementById('editAddSpecialBtn').addEventListener('click', openEditSpecialModal);
+    document.getElementById('editSpecialCancelBtn').addEventListener('click', closeEditSpecialModal);
+    document.getElementById('editSpecialAddBtn').addEventListener('click', addEditSpecialSection);
+    document.getElementById('editSpecialModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeEditSpecialModal();
+    });
+
     document.getElementById('createSaveBtn').addEventListener('click', createCollection);
+    document.getElementById('editSaveBtn').addEventListener('click', saveEdit);
+    document.getElementById('editCancelBtn').addEventListener('click', () => {
+        showView('edit-picker');
+        renderEditShelf();
+    });
 
     document.getElementById('exportBtn').addEventListener('click', exportBackup);
     document.getElementById('importBtn').addEventListener('click', () => {
