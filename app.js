@@ -5,6 +5,7 @@ let filter = 'all';
 let confirmCallback = null;
 let specialSections = [];
 let editSpecialSections = [];
+let editingSpecialIdx = null;
 let coverDataUrl = null;
 let editCoverDataUrl = null;
 
@@ -252,13 +253,24 @@ function renderEditSpecialSections() {
         const div = document.createElement('div');
         div.className = 'special-item';
         div.innerHTML = `
-            <span><strong>${sec.name}</strong> (${sec.prefix}) → ${sec.from} a ${sec.to}</span>
+            <span class="special-info" data-idx="${editSpecialSections.indexOf(sec)}" style="cursor:pointer;flex:1;">
+                <strong>${sec.name}</strong> (${sec.prefix}) → ${sec.from} a ${sec.to}
+            </span>
             <button class="remove" data-idx="${editSpecialSections.indexOf(sec)}">✕</button>
         `;
         container.appendChild(div);
     }
+
+    container.querySelectorAll('.special-info').forEach(span => {
+        span.addEventListener('click', () => {
+            const idx = parseInt(span.getAttribute('data-idx'), 10);
+            openEditSpecialModal(idx);
+        });
+    });
+
     container.querySelectorAll('.remove').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
             const idx = parseInt(btn.getAttribute('data-idx'), 10);
             editSpecialSections.splice(idx, 1);
             renderEditSpecialSections();
@@ -282,7 +294,6 @@ function saveEdit() {
         return;
     }
 
-    // Guardar estado actual por key (así conservamos have/rep)
     const oldItems = new Map();
     for (const it of col.items) {
         oldItems.set(it.key, it);
@@ -299,7 +310,6 @@ function saveEdit() {
     const shinySet = new Set(shinyNumbers);
     const newItems = [];
 
-    // Sección general
     for (let i = from; i <= to; i++) {
         const key = `num:${i}`;
         const old = oldItems.get(key);
@@ -315,7 +325,6 @@ function saveEdit() {
         });
     }
 
-    // Secciones especiales (conservando id y estado)
     const newSections = [generalSection];
     for (const sec of editSpecialSections) {
         const section = {
@@ -358,17 +367,36 @@ function saveEdit() {
 }
 
 // Modal sección especial en edición
-function openEditSpecialModal() {
-    document.getElementById('editSpecialModal').classList.remove('hidden');
-    document.getElementById('editSpecialName').value = '';
-    document.getElementById('editSpecialPrefix').value = '';
-    document.getElementById('editSpecialFrom').value = 1;
-    document.getElementById('editSpecialTo').value = 20;
-    document.getElementById('editSpecialShiny').value = '';
+function openEditSpecialModal(idx) {
+    editingSpecialIdx = (typeof idx === 'number') ? idx : null;
+    const modal = document.getElementById('editSpecialModal');
+    const title = modal.querySelector('h3');
+
+    if (editingSpecialIdx !== null) {
+        const sec = editSpecialSections[editingSpecialIdx];
+        title.textContent = 'Editar sección especial';
+        document.getElementById('editSpecialName').value = sec.name;
+        document.getElementById('editSpecialPrefix').value = sec.prefix;
+        document.getElementById('editSpecialFrom').value = sec.from;
+        document.getElementById('editSpecialTo').value = sec.to;
+        document.getElementById('editSpecialShiny').value = (sec.shinyNumbers || []).join(', ');
+    } else {
+        title.textContent = 'Agregar sección especial';
+        document.getElementById('editSpecialName').value = '';
+        document.getElementById('editSpecialPrefix').value = '';
+        document.getElementById('editSpecialFrom').value = 1;
+        document.getElementById('editSpecialTo').value = 20;
+        document.getElementById('editSpecialShiny').value = '';
+    }
+
+    modal.classList.remove('hidden');
 }
+
 function closeEditSpecialModal() {
     document.getElementById('editSpecialModal').classList.add('hidden');
+    editingSpecialIdx = null;
 }
+
 function addEditSpecialSection() {
     const name = document.getElementById('editSpecialName').value.trim();
     const prefix = document.getElementById('editSpecialPrefix').value.trim().toUpperCase();
@@ -384,7 +412,17 @@ function addEditSpecialSection() {
         return;
     }
 
-    editSpecialSections.push({ id: uid('sec'), name, prefix, from, to, shinyNumbers });
+    if (editingSpecialIdx !== null) {
+        const sec = editSpecialSections[editingSpecialIdx];
+        sec.name = name;
+        sec.prefix = prefix;
+        sec.from = from;
+        sec.to = to;
+        sec.shinyNumbers = shinyNumbers;
+    } else {
+        editSpecialSections.push({ id: uid('sec'), name, prefix, from, to, shinyNumbers });
+    }
+
     renderEditSpecialSections();
     closeEditSpecialModal();
 }
@@ -824,7 +862,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('searchInput').addEventListener('input', renderShelf);
 
-    // Portada en crear
     document.getElementById('coverPickBtn').addEventListener('click', () => {
         document.getElementById('coverInput').click();
     });
@@ -846,7 +883,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('coverClearBtn').style.display = 'none';
     });
 
-    // Portada en editar
     document.getElementById('editCoverPickBtn').addEventListener('click', () => {
         document.getElementById('editCoverInput').click();
     });
@@ -866,7 +902,6 @@ document.addEventListener('DOMContentLoaded', () => {
         paintEditCover();
     });
 
-    // Modal sección especial (crear)
     document.getElementById('addSpecialBtn').addEventListener('click', openSpecialModal);
     document.getElementById('specialCancelBtn').addEventListener('click', closeSpecialModal);
     document.getElementById('specialAddBtn').addEventListener('click', addSpecialSection);
@@ -874,8 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closeSpecialModal();
     });
 
-    // Modal sección especial (editar)
-    document.getElementById('editAddSpecialBtn').addEventListener('click', openEditSpecialModal);
+    document.getElementById('editAddSpecialBtn').addEventListener('click', () => openEditSpecialModal(null));
     document.getElementById('editSpecialCancelBtn').addEventListener('click', closeEditSpecialModal);
     document.getElementById('editSpecialAddBtn').addEventListener('click', addEditSpecialSection);
     document.getElementById('editSpecialModal').addEventListener('click', (e) => {
