@@ -4,8 +4,9 @@ let editId = null;
 let filter = 'all';
 let confirmCallback = null;
 let specialSections = [];
-let editSpecialSections = [];
 let editingSpecialIdx = null;
+let editSpecialSections = [];
+let editingEditSpecialIdx = null;
 let coverDataUrl = null;
 let editCoverDataUrl = null;
 
@@ -194,15 +195,6 @@ function confirmDeleteCollection(id) {
 }
 
 // ============================================================
-//  HELPERS DE SECCIONES
-// ============================================================
-
-// Devuelve cuántas figuritas de la sección tienen marcas
-function countMarkedInSection(col, sectionId) {
-    return col.items.filter(it => it.sectionId === sectionId && (it.have || it.rep > 0)).length;
-}
-
-// ============================================================
 //  EDITAR COLECCIÓN
 // ============================================================
 
@@ -213,8 +205,8 @@ function openEdit(id) {
 
     document.getElementById('editName').value = col.name || '';
 
-    // Cargar TODAS las secciones (incluida la base) en la lista
-    editSpecialSections = col.sections.map((sec, idx) => {
+    // Cargar TODAS las secciones (base incluida) en la lista
+    editSpecialSections = col.sections.map(sec => {
         const items = col.items.filter(it => it.sectionId === sec.id);
         const nums = items.map(it => it.num).filter(n => typeof n === 'number' && !isNaN(n));
         const shinyNums = items.filter(it => it.shiny).map(it => it.num);
@@ -224,18 +216,9 @@ function openEdit(id) {
             prefix: sec.prefix || '',
             from: nums.length ? Math.min(...nums) : 1,
             to: nums.length ? Math.max(...nums) : 20,
-            shinyNumbers: shinyNums,
-            isBase: idx === 0
+            shinyNumbers: shinyNums
         };
     });
-
-    // Ya no usamos los campos viejos de "numeración general" — los ocultamos
-    const fromField = document.getElementById('editNumFrom').parentElement.parentElement;
-    const toField = document.getElementById('editNumTo').parentElement.parentElement;
-    if (fromField) fromField.style.display = 'none';
-    if (toField) toField.style.display = 'none';
-    const shinyField = document.getElementById('editShinyInput').parentElement;
-    if (shinyField) shinyField.style.display = 'none';
 
     editCoverDataUrl = col.cover || null;
     paintEditCover();
@@ -287,7 +270,9 @@ function renderEditSpecialSections() {
             const idx = parseInt(btn.getAttribute('data-idx'), 10);
             const sec = editSpecialSections[idx];
             const col = getEdit();
-            const marcadas = col ? countMarkedInSection(col, sec.id) : 0;
+            const marcadas = col ? col.items.filter(it =>
+                it.sectionId === sec.id && (it.have || it.rep > 0)
+            ).length : 0;
 
             if (marcadas > 0) {
                 document.getElementById('confirmMsg').textContent =
@@ -313,7 +298,6 @@ function saveEdit() {
     const name = document.getElementById('editName').value.trim();
     if (!name) { alert('El nombre es obligatorio.'); return; }
 
-    // Validar cada sección
     for (const sec of editSpecialSections) {
         if (!sec.name) { alert('Todas las secciones necesitan un nombre.'); return; }
         if (isNaN(sec.from) || isNaN(sec.to) || sec.from > sec.to) {
@@ -338,7 +322,7 @@ function saveEdit() {
 }
 
 function aplicarCambios(col, name) {
-    // Mapa de figuritas viejas: sectionId + num -> item
+    // Mapa de figuritas viejas por sectionId + num (para conservar marcas)
     const oldBySecNum = new Map();
     for (const it of col.items) {
         const num = (typeof it.num === 'number') ? it.num : parseInt(it.label.replace(/^[^\d]*/, ''), 10);
@@ -394,14 +378,14 @@ function aplicarCambios(col, name) {
     renderEditShelf();
 }
 
-// Modal sección especial en edición
+// Modal editar sección
 function openEditSpecialModal(idx) {
-    editingSpecialIdx = (typeof idx === 'number') ? idx : null;
+    editingEditSpecialIdx = (typeof idx === 'number') ? idx : null;
     const modal = document.getElementById('editSpecialModal');
     const title = modal.querySelector('h3');
 
-    if (editingSpecialIdx !== null) {
-        const sec = editSpecialSections[editingSpecialIdx];
+    if (editingEditSpecialIdx !== null) {
+        const sec = editSpecialSections[editingEditSpecialIdx];
         title.textContent = 'Editar sección';
         document.getElementById('editSpecialName').value = sec.name;
         document.getElementById('editSpecialPrefix').value = sec.prefix || '';
@@ -422,7 +406,7 @@ function openEditSpecialModal(idx) {
 
 function closeEditSpecialModal() {
     document.getElementById('editSpecialModal').classList.add('hidden');
-    editingSpecialIdx = null;
+    editingEditSpecialIdx = null;
 }
 
 function addEditSpecialSection() {
@@ -439,8 +423,8 @@ function addEditSpecialSection() {
         return;
     }
 
-    if (editingSpecialIdx !== null) {
-        const sec = editSpecialSections[editingSpecialIdx];
+    if (editingEditSpecialIdx !== null) {
+        const sec = editSpecialSections[editingEditSpecialIdx];
         sec.name = name;
         sec.prefix = prefix;
         sec.from = from;
@@ -450,8 +434,7 @@ function addEditSpecialSection() {
         editSpecialSections.push({
             id: uid('sec'),
             name, prefix, from, to,
-            shinyNumbers,
-            isBase: false
+            shinyNumbers
         });
     }
 
@@ -487,21 +470,9 @@ function renderDetail() {
     const grid = document.getElementById('detailGrid');
     grid.innerHTML = '';
 
-    const sectionsMap = new Map();
-    for (const it of items) {
-        const sectionId = it.sectionId || 'default';
-        if (!sectionsMap.has(sectionId)) {
-            const section = col.sections.find(s => s.id === sectionId);
-            sectionsMap.set(sectionId, {
-                name: section ? section.name : 'General',
-                items: []
-            });
-        }
-        sectionsMap.get(sectionId).items.push(it);
-    }
-
-    for (const [sectionId, sectionData] of sectionsMap) {
-        let filteredItems = sectionData.items;
+    // Agrupar por sección respetando el orden de col.sections
+    for (const section of col.sections) {
+        let filteredItems = col.items.filter(it => it.sectionId === section.id);
         if (filter === 'miss') filteredItems = filteredItems.filter(it => !it.have);
         if (filter === 'rep') filteredItems = filteredItems.filter(it => it.rep > 0);
 
@@ -509,7 +480,7 @@ function renderDetail() {
 
         const sectionTitle = document.createElement('div');
         sectionTitle.className = 'section-title';
-        sectionTitle.textContent = sectionData.name;
+        sectionTitle.textContent = section.name;
         grid.appendChild(sectionTitle);
 
         const sectionGrid = document.createElement('div');
@@ -622,7 +593,7 @@ document.querySelectorAll('.tab').forEach(el => {
 });
 
 // ============================================================
-//  CREAR COLECCIÓN
+//  CREAR COLECCIÓN (comportamiento original)
 // ============================================================
 
 function renderSpecialSections() {
@@ -662,14 +633,15 @@ function renderSpecialSections() {
 
 function createCollection() {
     const name = document.getElementById('createName').value.trim();
-    if (!name) { alert('El nombre es obligatorio.'); return; }
+    const from = parseInt(document.getElementById('numFrom').value, 10);
+    const to = parseInt(document.getElementById('numTo').value, 10);
+    const shinyRaw = document.getElementById('shinyInput').value.trim();
+    const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
 
-    for (const sec of specialSections) {
-        if (!sec.name) { alert('Todas las secciones necesitan un nombre.'); return; }
-        if (isNaN(sec.from) || isNaN(sec.to) || sec.from > sec.to) {
-            alert(`Rango inválido en la sección "${sec.name}".`);
-            return;
-        }
+    if (!name) { alert('El nombre es obligatorio.'); return; }
+    if (isNaN(from) || isNaN(to) || from > to) {
+        alert('Rango inválido. Asegúrate de que "Desde" sea menor o igual que "Hasta".');
+        return;
     }
 
     const col = {
@@ -680,31 +652,55 @@ function createCollection() {
         sections: []
     };
 
+    // Sección base (numerada)
+    const baseSection = {
+        id: uid('sec'),
+        name: 'General',
+        prefix: '',
+        ownNumbering: false,
+        format: 'num',
+        specials: []
+    };
+    col.sections.push(baseSection);
+
+    const shinySet = new Set(shinyNumbers);
+    for (let i = from; i <= to; i++) {
+        col.items.push({
+            id: uid('it'),
+            sectionId: baseSection.id,
+            num: i,
+            label: String(i),
+            have: false,
+            rep: 0,
+            special: false,
+            shiny: shinySet.has(i)
+        });
+    }
+
+    // Secciones especiales
     for (const sec of specialSections) {
-        const sectionId = uid('sec');
         const section = {
-            id: sectionId,
+            id: uid('sec'),
             name: sec.name,
-            prefix: sec.prefix || '',
-            ownNumbering: !!sec.prefix,
-            format: sec.prefix ? 'alfa' : 'num',
+            prefix: sec.prefix,
+            ownNumbering: true,
+            format: 'alfa',
             specials: []
         };
         col.sections.push(section);
 
-        const shinySet = new Set(sec.shinyNumbers || []);
+        const shinySetSpecial = new Set(sec.shinyNumbers || []);
         for (let i = sec.from; i <= sec.to; i++) {
-            const label = sec.prefix ? `${sec.prefix}${i}` : String(i);
             col.items.push({
                 id: uid('it'),
-                sectionId,
+                sectionId: section.id,
                 num: i,
-                label,
+                label: `${sec.prefix}${i}`,
                 have: false,
                 rep: 0,
-                special: !!sec.prefix,
+                special: true,
                 section: sec.name,
-                shiny: shinySet.has(i)
+                shiny: shinySetSpecial.has(i)
             });
         }
     }
@@ -716,6 +712,9 @@ function createCollection() {
     renderShelf();
 
     document.getElementById('createName').value = '';
+    document.getElementById('shinyInput').value = '';
+    document.getElementById('numFrom').value = 1;
+    document.getElementById('numTo').value = 100;
     specialSections = [];
     coverDataUrl = null;
     renderSpecialSections();
@@ -762,8 +761,9 @@ function addSpecialSection() {
     const shinyNumbers = shinyRaw ? shinyRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : [];
 
     if (!name) { alert('El nombre es obligatorio.'); return; }
+    if (!prefix) { alert('El prefijo es obligatorio.'); return; }
     if (isNaN(from) || isNaN(to) || from > to) {
-        alert('Rango inválido.');
+        alert('Rango inválido. Asegúrate de que "Desde" sea menor o igual que "Hasta".');
         return;
     }
 
@@ -880,6 +880,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('coverPreview').innerHTML = '📘';
                 document.getElementById('coverClearBtn').style.display = 'none';
                 document.getElementById('createName').value = '';
+                document.getElementById('shinyInput').value = '';
+                document.getElementById('numFrom').value = 1;
+                document.getElementById('numTo').value = 100;
                 showView('create');
             }
             else if (v === 'edit-picker') {
